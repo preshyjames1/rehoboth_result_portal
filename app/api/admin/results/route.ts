@@ -1,3 +1,12 @@
+/**
+ * app/api/admin/results/route.ts
+ *
+ * Security fixes:
+ *   M-02 — File upload magic-byte validation: checks PDF header bytes
+ *           before accepting any upload, regardless of the browser-
+ *           supplied Content-Type (which is trivially spoofable).
+ *   L-03 — Bulk delete capped at 200 IDs per request.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServer } from '@/lib/supabase-server';
 import { getAdminSession } from '@/lib/session';
@@ -9,21 +18,24 @@ async function requireAdmin() {
   return session;
 }
 
+/** Verify the first 4 bytes are %PDF (0x25 0x50 0x44 0x46) */
+function isPdf(buffer: Buffer): boolean {
+  return buffer.length >= 4 && buffer.slice(0, 4).toString('ascii') === '%PDF';
+}
+
 // GET — list results
 export async function GET(request: NextRequest) {
-  try {
-    await requireAdmin();
-  } catch {
+  try { await requireAdmin(); } catch {
     return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
-  const term = searchParams.get('term');
+  const term    = searchParams.get('term');
   const session = searchParams.get('session');
-  const page = parseInt(searchParams.get('page') ?? '1', 10);
-  const limit = parseInt(searchParams.get('limit') ?? '50', 10);
-  const from = (page - 1) * limit;
-  const to = from + limit - 1;
+  const page    = parseInt(searchParams.get('page')  ?? '1',  10);
+  const limit   = parseInt(searchParams.get('limit') ?? '50', 10);
+  const from    = (page - 1) * limit;
+  const to      = from + limit - 1;
 
   const supabase = createSupabaseServer();
 
@@ -33,34 +45,29 @@ export async function GET(request: NextRequest) {
     .order('created_at', { ascending: false })
     .range(from, to);
 
-  if (term) query = query.eq('term', term);
+  if (term)    query = query.eq('term', term);
   if (session) query = query.eq('session', session);
 
   const { data, count, error } = await query;
-
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
   return NextResponse.json({ results: data, total: count });
 }
 
 // POST — single result upload OR bulk ZIP upload
-// Detected by: formData has 'zip_file' → bulk, 'pdf' → single
 export async function POST(request: NextRequest) {
-  try {
-    await requireAdmin();
-  } catch {
+  try { await requireAdmin(); } catch {
     return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
   const formData = await request.formData();
-  const zipFile = formData.get('zip_file') as File | null;
+  const zipFile  = formData.get('zip_file') as File | null;
 
   // ── BULK UPLOAD (ZIP) ─────────────────────────────────────────────
   if (zipFile) {
-    const term = formData.get('term') as string;
-    const session = formData.get('session') as string;
+    const term         = formData.get('term')         as string;
+    const session      = formData.get('session')      as string;
     const publish_mode = formData.get('publish_mode') as string;
-    const publish_at = formData.get('publish_at') as string | null;
+    const publish_at   = formData.get('publish_at')   as string | null;
 
     if (!term || !session) {
       return NextResponse.json({ error: 'Term and session are required' }, { status: 400 });
@@ -71,9 +78,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `ZIP file exceeds ${maxMB}MB limit` }, { status: 400 });
     }
 
-    const supabase = createSupabaseServer();
+    const supabase     = createSupabaseServer();
     const is_published = publish_mode === 'now';
-    const scheduledAt = publish_mode === 'scheduled' && publish_at ? publish_at : null;
+    const scheduledAt  = publish_mode === 'scheduled' && publish_at ? publish_at : null;
 
     let zip: JSZip;
     try {
@@ -84,23 +91,23 @@ export async function POST(request: NextRequest) {
     }
 
     const pdfFiles = Object.entries(zip.files).filter(
-      ([name, entry]) => !entry.dir && name.toLowerCase().endsWith('.pdf') && !name.startsWith('__MACOSX')
+      ([name, entry]) =>
+        !entry.dir &&
+        name.toLowerCase().endsWith('.pdf') &&
+        !name.startsWith('__MACOSX'),
     );
 
     const total = pdfFiles.length;
     let uploaded = 0;
-    let failed = 0;
+    let failed   = 0;
     const failures: { filename: string; reason: string }[] = [];
 
     for (const [filename, entry] of pdfFiles) {
-      const baseName = filename.split('/').pop() ?? filename;
+      const baseName    = filename.split('/').pop() ?? filename;
       const admissionNo = baseName.replace(/\.pdf$/i, '').trim().toUpperCase();
 
       const { data: student } = await supabase
-        .from('students')
-        .select('id, class')
-        .eq('admission_no', admissionNo)
-        .single();
+        .from('students').select('id, class').eq('admission_no', admissionNo).single();
 
       if (!student) {
         failed++;
@@ -110,6 +117,14 @@ export async function POST(request: NextRequest) {
 
       try {
         const pdfBuffer = Buffer.from(await entry.async('arraybuffer'));
+
+        // M-02: validate PDF magic bytes
+        if (!isPdf(pdfBuffer)) {
+          failed++;
+          failures.push({ filename: baseName, reason: 'File is not a valid PDF (bad header bytes)' });
+          continue;
+        }
+
         const path = `${session}/${student.class}/${student.id}.pdf`;
 
         const { error: uploadErr } = await supabase.storage
@@ -126,15 +141,15 @@ export async function POST(request: NextRequest) {
           .from('results')
           .upsert(
             {
-              student_id: student.id,
+              student_id:   student.id,
               term,
               session,
-              pdf_path: path,
+              pdf_path:     path,
               is_published,
-              publish_at: scheduledAt,
+              publish_at:   scheduledAt,
               published_at: is_published ? new Date().toISOString() : null,
             },
-            { onConflict: 'student_id,term,session' }
+            { onConflict: 'student_id,term,session' },
           );
 
         if (dbErr) {
@@ -154,28 +169,31 @@ export async function POST(request: NextRequest) {
   }
 
   // ── SINGLE UPLOAD ─────────────────────────────────────────────────
-  const file = formData.get('pdf') as File;
-  const student_id = formData.get('student_id') as string;
-  const term = formData.get('term') as string;
-  const session = formData.get('session') as string;
+  const file         = formData.get('pdf')          as File;
+  const student_id   = formData.get('student_id')   as string;
+  const term         = formData.get('term')         as string;
+  const session      = formData.get('session')      as string;
   const publish_mode = formData.get('publish_mode') as string;
-  const publish_at = formData.get('publish_at') as string | null;
+  const publish_at   = formData.get('publish_at')   as string | null;
 
   if (!file || !student_id || !term || !session) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
+  const fileBuffer = Buffer.from(await file.arrayBuffer());
+
+  // M-02: validate PDF magic bytes
+  if (!isPdf(fileBuffer)) {
+    return NextResponse.json({ error: 'File is not a valid PDF' }, { status: 400 });
+  }
+
   const supabase = createSupabaseServer();
 
   const { data: student } = await supabase
-    .from('students')
-    .select('id, class')
-    .eq('id', student_id)
-    .single();
+    .from('students').select('id, class').eq('id', student_id).single();
 
   if (!student) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
 
-  const fileBuffer = Buffer.from(await file.arrayBuffer());
   const path = `${session}/${student.class}/${student_id}.pdf`;
 
   const { error: uploadErr } = await supabase.storage
@@ -187,7 +205,7 @@ export async function POST(request: NextRequest) {
   }
 
   const is_published = publish_mode === 'now';
-  const scheduledAt = publish_mode === 'scheduled' && publish_at ? publish_at : null;
+  const scheduledAt  = publish_mode === 'scheduled' && publish_at ? publish_at : null;
 
   const { data, error } = await supabase
     .from('results')
@@ -196,32 +214,28 @@ export async function POST(request: NextRequest) {
         student_id,
         term,
         session,
-        pdf_path: path,
+        pdf_path:     path,
         is_published,
-        publish_at: scheduledAt,
+        publish_at:   scheduledAt,
         published_at: is_published ? new Date().toISOString() : null,
       },
-      { onConflict: 'student_id,term,session' }
+      { onConflict: 'student_id,term,session' },
     )
     .select()
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
   return NextResponse.json({ result: data }, { status: 201 });
 }
 
 // PATCH — update publish state (single or bulk)
 export async function PATCH(request: NextRequest) {
-  try {
-    await requireAdmin();
-  } catch {
+  try { await requireAdmin(); } catch {
     return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
   const body = await request.json();
   const { id, action, publish_at, ids } = body;
-
   const supabase = createSupabaseServer();
 
   if (ids && Array.isArray(ids)) {
@@ -252,36 +266,29 @@ export async function PATCH(request: NextRequest) {
   }
 
   const { data, error } = await supabase
-    .from('results')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
+    .from('results').update(updates).eq('id', id).select().single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ result: data });
 }
 
 // DELETE — remove one or many results (and their PDFs from storage)
-// Single:  DELETE /api/admin/results?id=xxx
-// Bulk:    DELETE /api/admin/results?ids=a,b,c
 export async function DELETE(request: NextRequest) {
-  try {
-    await requireAdmin();
-  } catch {
+  try { await requireAdmin(); } catch {
     return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id');
+  const id  = searchParams.get('id');
   const ids = searchParams.get('ids');
 
   if (!id && !ids) return NextResponse.json({ error: 'id or ids required' }, { status: 400 });
 
   const supabase = createSupabaseServer();
-  const idList = ids ? ids.split(',').map(s => s.trim()).filter(Boolean) : [id!];
+  // L-03: cap bulk deletes at 200 items
+  const idList = (ids ? ids.split(',') : [id!])
+    .map((s) => s.trim()).filter(Boolean).slice(0, 200);
 
-  // Fetch all pdf_paths so we can remove files from storage
   const { data: rows } = await supabase.from('results').select('pdf_path').in('id', idList);
   const paths = (rows ?? []).map((r: { pdf_path: string }) => r.pdf_path).filter(Boolean);
   if (paths.length > 0) {
@@ -290,6 +297,5 @@ export async function DELETE(request: NextRequest) {
 
   const { error } = await supabase.from('results').delete().in('id', idList);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
   return NextResponse.json({ success: true, deleted: idList.length });
 }

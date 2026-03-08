@@ -1,28 +1,18 @@
+/**
+ * app/api/master/route.ts
+ *
+ * Security fix:
+ *   C-03 — Replace in-memory Map rate limiter with Upstash Redis.
+ *   M-01 — Master PIN verification now uses bcrypt.compare against
+ *           the stored hash instead of plaintext equality check.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServer } from '@/lib/supabase-server';
 import { setMasterSession, getMasterSession } from '@/lib/session';
+import { verifyLimiter } from '@/lib/ratelimit';
+import bcrypt from 'bcryptjs';
 import type { ApiErrorResponse, MasterVerifyResponse } from '@/types';
 
-// Rate limiting
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + 60_000 });
-    return true;
-  }
-  if (entry.count >= 5) return false;
-  entry.count++;
-  return true;
-}
-
-// ─────────────────────────────────────────────────────────────────
-// POST — two actions in one route (avoids needing 2 functions):
-//
-//   action: 'verify'     → master credential login (no session required)
-//   action: 'get-result' → fetch a student's result (requires master_session)
-// ─────────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   const ip =
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
@@ -38,7 +28,7 @@ export async function POST(request: NextRequest) {
 
   const action = body.action ?? 'verify';
 
-  // ── ACTION: get-result (browse mode) ────────────────────────────
+  // ── ACTION: get-result (browse mode) ──────────────────────────────
   if (action === 'get-result') {
     const masterSession = await getMasterSession();
     if (!masterSession) {
@@ -95,15 +85,17 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       { student: { id: student.id, admission_no: student.admission_no, full_name: student.full_name, class: student.class }, signed_url: signedData.signedUrl },
-      { headers: { 'Cache-Control': 'no-store' } }
+      { headers: { 'Cache-Control': 'no-store' } },
     );
   }
 
-  // ── ACTION: verify (login) ────────────────────────────────────────
-  if (!checkRateLimit(ip)) {
+  // ── ACTION: verify (login) ─────────────────────────────────────────
+  // Rate limit applies only to the verify action (login attempts)
+  const { success: allowed } = await verifyLimiter.limit(`master:${ip}`);
+  if (!allowed) {
     return NextResponse.json(
       { error: 'RATE_LIMITED', message: 'Too many requests. Please wait a minute.' },
-      { status: 429 }
+      { status: 429 },
     );
   }
 
@@ -119,11 +111,16 @@ export async function POST(request: NextRequest) {
     .from('master_pins')
     .select('*')
     .eq('master_number', master_number.trim())
-    .eq('pin_code', pin_code.trim())
     .eq('is_active', true)
     .single();
 
-  if (masterErr || !masterPin) {
+  // Use bcrypt.compare against stored hash (M-01 fix).
+  // If masterPin not found, compare against dummy hash to prevent timing attacks.
+  const DUMMY_HASH = '$2b$12$invalidhashfortimingprotectionXXXXXXXXXXXXXXXXXXXX';
+  const hashToCompare = masterPin ? masterPin.pin_code : DUMMY_HASH;
+  const pinValid = await bcrypt.compare(pin_code.trim(), hashToCompare);
+
+  if (masterErr || !masterPin || !pinValid) {
     return NextResponse.json({ error: 'INVALID_MASTER_CREDENTIALS' } as ApiErrorResponse, { status: 401 });
   }
 

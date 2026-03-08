@@ -1,15 +1,24 @@
 'use client';
 
+/**
+ * app/payment/callback/page.tsx
+ *
+ * Security fix:
+ *   I-01 — The GET /api/payment endpoint no longer returns the payer's
+ *           email. The callback page now shows a generic success message
+ *           rather than displaying the email address, eliminating the
+ *           unauthenticated PII leak via reference enumeration.
+ */
+
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 function PaymentCallbackContent() {
   const searchParams = useSearchParams();
-  const reference = searchParams.get('reference');
+  const reference    = searchParams.get('reference');
   const [status, setStatus] = useState<'loading' | 'success' | 'failed'>('loading');
-  const [email, setEmail] = useState('');
-  const [error, setError] = useState('');
+  const [error,  setError]  = useState('');
 
   useEffect(() => {
     if (!reference) {
@@ -18,15 +27,13 @@ function PaymentCallbackContent() {
       return;
     }
 
-    // Verify payment with Paystack
     const verify = async () => {
       try {
-        const res = await fetch(`/api/payment?reference=${reference}`);
+        const res  = await fetch(`/api/payment?reference=${reference}`);
         const data = await res.json();
 
         if (res.ok && data.status === 'success') {
           setStatus('success');
-          setEmail(data.email ?? '');
         } else {
           setStatus('failed');
           setError(data.message ?? 'Payment verification failed.');
@@ -54,6 +61,7 @@ function PaymentCallbackContent() {
 
       <main className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-8 max-w-md w-full text-center">
+
           {status === 'loading' && (
             <>
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-50 flex items-center justify-center">
@@ -75,9 +83,10 @@ function PaymentCallbackContent() {
               <h2 className="font-garamond text-2xl font-bold text-green-700">Payment Successful!</h2>
               <div className="bg-green-50 border border-green-200 rounded-md p-4 mt-4 text-left">
                 <p className="text-green-800 text-sm font-medium">Your PIN has been sent!</p>
+                {/* I-01 FIX: email address no longer displayed here */}
                 <p className="text-green-700 text-sm mt-1">
-                  Your result-checking PIN has been sent to{' '}
-                  {email && <strong>{email}</strong>}. Please check your inbox (and spam folder).
+                  Your result-checking PIN has been sent to your email address.
+                  Please check your inbox and spam folder.
                 </p>
               </div>
               <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-left">
@@ -125,6 +134,7 @@ function PaymentCallbackContent() {
               </div>
             </>
           )}
+
         </div>
       </main>
 

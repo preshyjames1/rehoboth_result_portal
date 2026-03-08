@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 
-const TERMS = ['First Term', 'Second Term', 'Third Term'];
+const TERMS    = ['First Term', 'Second Term', 'Third Term'];
 const currentYear = new Date().getFullYear();
 const SESSIONS = Array.from({ length: 5 }, (_, i) => {
   const year = currentYear - i;
@@ -12,7 +12,6 @@ const SESSIONS = Array.from({ length: 5 }, (_, i) => {
 });
 const CLASSES = ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'];
 
-// ── Edit announcements here ──────────────────────────────────────────────
 const ANNOUNCEMENTS = [
   '📢 First Term 2025/2026 results are now available — check your result using your PIN.',
   '⚠️ Ensure you use the correct Term and Session when checking your result.',
@@ -20,24 +19,23 @@ const ANNOUNCEMENTS = [
   '🎓 Congratulations to all students on the completion of the First Term examinations.',
   '📌 Your PIN is available from the school — keep it private and do not share it.',
 ];
-// ────────────────────────────────────────────────────────────────────────
 
 const ERROR_MESSAGES: Record<string, string> = {
-  INVALID_CREDENTIALS: 'Invalid admission number or PIN. Please check and try again.',
-  PIN_INACTIVE: 'This PIN has been deactivated. Please contact the school.',
-  PIN_LIMIT_EXCEEDED: 'This PIN has reached its maximum usage limit. Contact the school for a new one.',
+  INVALID_CREDENTIALS:            'Invalid admission number or PIN. Please check and try again.',
+  PIN_INACTIVE:                   'This PIN has been deactivated. Please contact the school.',
+  PIN_LIMIT_EXCEEDED:             'This PIN has reached its maximum usage limit. Contact the school for a new one.',
   PIN_BELONGS_TO_ANOTHER_STUDENT: 'This PIN belongs to another student.',
-  NO_RESULT_FOUND: 'No result found for the selected term and session.',
-  RESULT_NOT_YET_PUBLISHED: 'Results for this term have not been published yet. Please check back later.',
-  RATE_LIMITED: 'Too many attempts. Please wait a minute and try again.',
+  NO_RESULT_FOUND:                'No result found for the selected term and session.',
+  RESULT_NOT_YET_PUBLISHED:       'Results for this term have not been published yet. Please check back later.',
+  RATE_LIMITED:                   'Too many attempts. Please wait a minute and try again.',
 };
 
 export default function HomePage() {
   const router = useRouter();
-  const [form, setForm] = useState({ admission_no: '', pin_code: '', class: '', term: '', session: '' });
+  const [form, setForm]       = useState({ admission_no: '', pin_code: '', class: '', term: '', session: '' });
   const [showPin, setShowPin] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError]     = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -49,14 +47,14 @@ export default function HomePage() {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch('/api/verify', {
-        method: 'POST',
+      const res  = await fetch('/api/verify', {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body:    JSON.stringify({
           admission_no: form.admission_no.trim().toUpperCase(),
-          pin_code: form.pin_code.trim().toUpperCase(),
-          term: form.term,
-          session: form.session,
+          pin_code:     form.pin_code.trim().toUpperCase(),
+          term:         form.term,
+          session:      form.session,
         }),
       });
       const data = await res.json();
@@ -64,14 +62,25 @@ export default function HomePage() {
         setError(ERROR_MESSAGES[data.error] ?? 'An error occurred. Please try again.');
         return;
       }
+
+      /*
+       * L-02 FIX: Do NOT store the signed_url in sessionStorage.
+       * The signed URL is a time-limited credential — storing it in
+       * sessionStorage exposes it to any browser extension or injected
+       * script. Instead, store only non-sensitive display data and
+       * always fetch a fresh signed URL from /api/get-pdf-url on the
+       * result page (which already happens every 90 seconds anyway).
+       */
       sessionStorage.setItem('result_student', JSON.stringify({
-        ...data.student,
-        class: form.class || data.student.class,
-        term: form.term,
-        session: form.session,
-        signed_url: data.signed_url,
+        id:              data.student.id,
+        admission_no:    data.student.admission_no,
+        full_name:       data.student.full_name,
+        class:           form.class || data.student.class,
+        term:            form.term,
+        session:         form.session,
         pin_usage_count: data.pin_usage_count,
         pin_usage_limit: data.pin_usage_limit,
+        // signed_url intentionally NOT stored here
       }));
       router.push('/result');
     } catch {
@@ -142,11 +151,11 @@ export default function HomePage() {
               </div>
               <ol className="px-4 py-4 space-y-3">
                 {[
-                  { n: '1', title: 'Get your PIN', desc: 'Collect your result-checking PIN from the school office.' },
+                  { n: '1', title: 'Get your PIN',      desc: 'Collect your result-checking PIN from the school office.' },
                   { n: '2', title: 'Enter your details', desc: 'Fill in your Admission Number, Class, Term, and Session.' },
-                  { n: '3', title: 'Enter your PIN', desc: 'Type your 16-character PIN — dashes are optional.' },
-                  { n: '4', title: 'View your result', desc: 'Click "Check Result" to load your official result sheet.' },
-                  { n: '5', title: 'Print if needed', desc: 'Use the Print button for a clean A4 printout.' },
+                  { n: '3', title: 'Enter your PIN',     desc: 'Type your 16-character PIN — dashes are optional.' },
+                  { n: '4', title: 'View your result',   desc: 'Click "Check Result" to load your official result sheet.' },
+                  { n: '5', title: 'Print if needed',    desc: 'Use the Print button for a clean A4 printout.' },
                 ].map((step) => (
                   <li key={step.n} className="flex gap-3">
                     <span className="w-6 h-6 rounded-full bg-[#4169E1] text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">

@@ -1,22 +1,17 @@
+/**
+ * app/api/verify/route.ts
+ *
+ * Security fix:
+ *   C-03 — Replace in-memory Map rate limiter with Upstash Redis.
+ *           The old Map was reset on every serverless cold start,
+ *           providing zero real protection on Vercel.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServer } from '@/lib/supabase-server';
 import { setResultSession } from '@/lib/session';
 import { normalizePin } from '@/lib/pin-generator';
+import { verifyLimiter } from '@/lib/ratelimit';
 import type { ApiErrorResponse, VerifyResponse } from '@/types';
-
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + 60_000 });
-    return true;
-  }
-  if (entry.count >= 5) return false;
-  entry.count++;
-  return true;
-}
 
 export async function POST(request: NextRequest) {
   const ip =
@@ -24,10 +19,12 @@ export async function POST(request: NextRequest) {
     request.headers.get('x-real-ip') ??
     'unknown';
 
-  if (!checkRateLimit(ip)) {
+  // Upstash persistent rate limit — 5 attempts per minute per IP
+  const { success: allowed } = await verifyLimiter.limit(`verify:${ip}`);
+  if (!allowed) {
     return NextResponse.json(
       { error: 'RATE_LIMITED', message: 'Too many requests. Please wait a minute.' },
-      { status: 429 }
+      { status: 429 },
     );
   }
 
@@ -43,10 +40,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'INVALID_CREDENTIALS' } as ApiErrorResponse, { status: 400 });
   }
 
-  // Normalize PIN: strip dashes, spaces, uppercase
-  // Works whether user enters "ABCD-EFGH-1234-5678" or "ABCDEFGH12345678"
   const normalizedPin = normalizePin(pin_code);
-
   const supabase = createSupabaseServer();
 
   // 1. Find student
@@ -60,7 +54,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'INVALID_CREDENTIALS' } as ApiErrorResponse, { status: 401 });
   }
 
-  // 2. Find PIN — search by normalized value (new PINs stored without dashes)
+  // 2. Find PIN
   const { data: pin, error: pinErr } = await supabase
     .from('pins')
     .select('*')
@@ -83,7 +77,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'PIN_BELONGS_TO_ANOTHER_STUDENT' } as ApiErrorResponse, { status: 403 });
   }
 
-  // 3. Lock PIN to student on first use
+  // 3. Lock PIN to student on first use (optimistic concurrency)
   if (!pin.claimed_by_student_id) {
     const { error: claimErr } = await supabase
       .from('pins')
