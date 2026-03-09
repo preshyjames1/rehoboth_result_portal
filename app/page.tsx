@@ -13,10 +13,9 @@ const SESSIONS = Array.from({ length: 5 }, (_, i) => {
 const CLASSES = ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'];
 
 const ANNOUNCEMENTS = [
-  '📢 First Term 2025/2026 results are now available — check your result using your PIN.',
-  '⚠️ Ensure you use the correct Term and Session when checking your result.',
+   '🎓 Congratulations to all students on the completion of the Second Term examinations.',
+  '📢 Second Term 2025/2026 results will soon be available — check your result using your PIN.',
   '📞 For enquiries or to obtain a result-checking PIN, contact the school office.',
-  '🎓 Congratulations to all students on the completion of the First Term examinations.',
   '📌 Your PIN is available from the school — keep it private and do not share it.',
 ];
 
@@ -106,13 +105,13 @@ export default function HomePage() {
       {/* Hero */}
       <header className="bg-gradient-to-b from-[#0f0f23] to-[#1a1a2e] text-white py-8 px-4">
         <div className="max-w-5xl mx-auto flex flex-row items-center justify-center gap-6 text-center">
-          <Image src="/logo.png" alt="Rehoboth College Crest" width={105} height={105} className="drop-shadow-xl" priority />
+          <Image src="/logo.png" alt="Rehoboth College Crest" width={200} height={150} className="drop-shadow-xl" priority />
           <div>
             <h1 className="font-garamond text-3xl sm:text-4xl font-bold text-[#FFD700] leading-tight">
               REHOBOTH COLLEGE
             </h1>
             <p className="text-gray-300 uppercase tracking-widest text-xs sm:text-sm mt-1">
-              Official Student Result Checking Portal
+              Result Checking Portal
             </p>
             <p className="text-gray-400 italic text-xs sm:text-sm mt-1">
               Motto: <span className="text-[#FFD700]">Godliness, Foundation for Excellence</span>
@@ -249,8 +248,7 @@ export default function HomePage() {
                       {showPin ? 'HIDE' : 'SHOW'}
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">Enter with or without dashes, e.g. <span className="font-mono">ABCD1234EFGH5678</span></p>
-                </div>
+                  </div>
 
                 <button type="submit" disabled={loading}
                   className="w-full bg-[#4169E1] hover:bg-[#2c4fc9] disabled:bg-[#a0aec0] text-white font-semibold py-3 rounded-md text-sm mt-1">
