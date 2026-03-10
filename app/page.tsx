@@ -94,11 +94,11 @@ export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col bg-[#F5F5F5]">
       <style>{`
-        @keyframes marquee {
-          0%   { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-        .ticker { animation: marquee 55s linear infinite; }
+       @keyframes marquee {
+  0%   { transform: translateX(100vw); }
+  100% { transform: translateX(-50%); }
+}
+.ticker { animation: marquee 75s linear infinite; }
         .ticker:hover { animation-play-state: paused; }
       `}</style>
 
