@@ -105,7 +105,7 @@ export default function HomePage() {
       {/* Hero */}
       <header className="bg-gradient-to-b from-[#0f0f23] to-[#1a1a2e] text-white py-8 px-4">
         <div className="max-w-5xl mx-auto flex flex-row items-center justify-center gap-6 text-center">
-          <Image src="/logo.png" alt="Rehoboth College Crest" width={200} height={150} className="drop-shadow-xl" priority />
+          <Image src="/logo.png" alt="Rehoboth College Crest" width={200} height={120} className="drop-shadow-xl" priority />
           <div>
             <h1 className="font-garamond text-3xl sm:text-4xl font-bold text-[#FFD700] leading-tight">
               REHOBOTH COLLEGE
