@@ -272,7 +272,7 @@ export default function HomePage() {
       <footer className="bg-[#1a1a2e] text-gray-400 text-xs text-center py-4 px-4 mt-4">
         <p className="font-garamond text-[#FFD700] text-sm mb-1">Rehoboth College</p>
         <p>Official Academic Result Portal</p>
-        <p className="mt-1">© {new Date().getFullYear()} Rehoboth College. Powered by JayP Technologies.</p>
+        <p className="mt-1">© {new Date().getFullYear()} Rehoboth College. Powered by Jay P Technologies.</p>
       </footer>
     </div>
   );
