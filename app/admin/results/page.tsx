@@ -227,20 +227,7 @@ export default function AdminResultsPage() {
     if ((await fetch(`/api/admin/broadsheets?id=${bs.id}`, { method: 'DELETE' })).ok) fetchBroadsheets();
     else alert('Failed to delete broadsheet.');
   };
- setBsViewUrl(''); setBsViewError(''); setBsViewLoading(true);
-    try {
-      const res = await fetch('/api/admin/broadsheets', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: bs.id }),
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      const blob = await (await fetch(data.signed_url)).blob();
-      setBsViewUrl(URL.createObjectURL(blob));
-    } catch { setBsViewError('Could not load PDF. Try again.'); }
-    finally { setBsViewLoading(false); }
-  };
- setBsViewTarget(null); setBsViewUrl(''); setBsViewError(''); };
+
   const typeLabel = (v: string) => BROADSHEET_TYPES.find((t) => t.value === v)?.label ?? v;
 
   const Spinner = () => (
