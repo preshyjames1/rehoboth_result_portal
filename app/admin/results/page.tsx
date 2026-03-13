@@ -202,17 +202,7 @@ export default function AdminResultsPage() {
     } catch { setReuploadMsg('Network error'); }
     finally { setReuploadLoading(false); }
   };
- setViewUrl(''); setViewError(''); setViewLoading(true);
-    try {
-      const res = await fetch(`/api/admin/results/view-pdf?result_id=${result.id}`, { cache: 'no-store' });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      const blob = await (await fetch(data.signed_url)).blob();
-      setViewUrl(URL.createObjectURL(blob));
-    } catch { setViewError('Could not load PDF. Try again.'); }
-    finally { setViewLoading(false); }
-  };
- setViewTarget(null); setViewUrl(''); setViewError(''); };
+
 
   const handleBsUpload = async (e: React.FormEvent) => {
     e.preventDefault();
