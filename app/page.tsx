@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 
 const TERMS    = ['First Term', 'Second Term', 'Third Term'];
@@ -13,7 +12,7 @@ const SESSIONS = Array.from({ length: 5 }, (_, i) => {
 const CLASSES = ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'];
 
 const ANNOUNCEMENTS = [
-   '🎓 Congratulations to all students on the completion of the Second Term examinations.',
+  '🎓 Congratulations to all students on the completion of the Second Term examinations.',
   '📢 Second Term 2025/2026 results will soon be available — check your result using your PIN.',
   '📞 For enquiries or to obtain a result-checking PIN, contact the school office.',
   '📌 Your PIN is available from the school — keep it private and do not share it.',
@@ -29,12 +28,22 @@ const ERROR_MESSAGES: Record<string, string> = {
   RATE_LIMITED:                   'Too many attempts. Please wait a minute and try again.',
 };
 
+interface VerifiedStudent {
+  full_name:       string;
+  admission_no:    string;
+  class:           string;
+  term:            string;
+  session:         string;
+  pin_usage_count: number;
+  pin_usage_limit: number;
+}
+
 export default function HomePage() {
-  const router = useRouter();
-  const [form, setForm]       = useState({ admission_no: '', pin_code: '', class: '', term: '', session: '' });
-  const [showPin, setShowPin] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState('');
+  const [form, setForm]           = useState({ admission_no: '', pin_code: '', class: '', term: '', session: '' });
+  const [showPin, setShowPin]     = useState(false);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState('');
+  const [verified, setVerified]   = useState<VerifiedStudent | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -64,11 +73,11 @@ export default function HomePage() {
 
       /*
        * L-02 FIX: Do NOT store the signed_url in sessionStorage.
-       * The signed URL is a time-limited credential — storing it in
-       * sessionStorage exposes it to any browser extension or injected
-       * script. Instead, store only non-sensitive display data and
-       * always fetch a fresh signed URL from /api/get-pdf-url on the
-       * result page (which already happens every 90 seconds anyway).
+       * Only non-sensitive display data is stored.
+       *
+       * The result is served via /api/result-pdf which reads the
+       * result_session cookie set by /api/verify — the PDF URL is
+       * never exposed to the client at any point.
        */
       sessionStorage.setItem('result_student', JSON.stringify({
         id:              data.student.id,
@@ -79,9 +88,19 @@ export default function HomePage() {
         session:         form.session,
         pin_usage_count: data.pin_usage_count,
         pin_usage_limit: data.pin_usage_limit,
-        // signed_url intentionally NOT stored here
       }));
-      router.push('/result');
+
+      // Show the success card — /api/result-pdf reads the result_session
+      // cookie that was set by /api/verify above.
+      setVerified({
+        full_name:       data.student.full_name,
+        admission_no:    data.student.admission_no,
+        class:           form.class || data.student.class,
+        term:            form.term,
+        session:         form.session,
+        pin_usage_count: data.pin_usage_count,
+        pin_usage_limit: data.pin_usage_limit,
+      });
     } catch {
       setError('A network error occurred. Please check your connection and try again.');
     } finally {
@@ -91,14 +110,18 @@ export default function HomePage() {
 
   const tickerText = ANNOUNCEMENTS.join('      ✦      ');
 
+  const usagesLeft = verified
+    ? verified.pin_usage_limit - verified.pin_usage_count
+    : 0;
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F5F5F5]">
       <style>{`
-       @keyframes marquee {
-  0%   { transform: translateX(100vw); }
-  100% { transform: translateX(-50%); }
-}
-.ticker { animation: marquee 75s linear infinite; }
+        @keyframes marquee {
+          0%   { transform: translateX(100vw); }
+          100% { transform: translateX(-50%); }
+        }
+        .ticker { animation: marquee 75s linear infinite; }
         .ticker:hover { animation-play-state: paused; }
       `}</style>
 
@@ -150,11 +173,11 @@ export default function HomePage() {
               </div>
               <ol className="px-4 py-4 space-y-3">
                 {[
-                  { n: '1', title: 'Get your PIN',      desc: 'Collect your result-checking PIN from the school office.' },
+                  { n: '1', title: 'Get your PIN',       desc: 'Collect your result-checking PIN from the school office.' },
                   { n: '2', title: 'Enter your details', desc: 'Fill in your Admission Number, Class, Term, and Session.' },
                   { n: '3', title: 'Enter your PIN',     desc: 'Type your 16-character PIN — dashes are optional.' },
-                  { n: '4', title: 'View your result',   desc: 'Click "Check Result" to load your official result sheet.' },
-                  { n: '5', title: 'Print if needed',    desc: 'Use the Print button for a clean A4 printout.' },
+                  { n: '4', title: 'View your result',   desc: 'Click "Check Result" then tap "Open Result" to view your result sheet.' },
+                  { n: '5', title: 'Print if needed',    desc: 'Use your browser\'s Print option to save or print your result.' },
                 ].map((step) => (
                   <li key={step.n} className="flex gap-3">
                     <span className="w-6 h-6 rounded-full bg-[#4169E1] text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -182,88 +205,164 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* RIGHT: Form */}
+          {/* RIGHT: Form OR success card */}
           <div className="lg:col-span-3">
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-              <div className="bg-[#4169E1] px-6 py-4">
-                <h2 className="font-garamond text-xl text-white font-semibold">Check Your Result</h2>
-                <p className="text-blue-100 text-xs mt-1">Fill in all fields accurately to access your result</p>
+
+            {verified ? (
+              /* ── SUCCESS CARD ──────────────────────────────────────────── */
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                <div className="bg-green-600 px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">✅</span>
+                    <div>
+                      <h2 className="font-garamond text-xl text-white font-semibold">Verified Successfully</h2>
+                      <p className="text-green-100 text-xs mt-0.5">Your result is ready to view</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-6 py-6">
+                  {/* Student info */}
+                  <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 mb-5 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Name</span>
+                      <span className="font-semibold text-[#1a1a2e]">{verified.full_name}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Admission No.</span>
+                      <span className="font-mono font-semibold text-[#4169E1]">{verified.admission_no}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Class</span>
+                      <span className="font-semibold text-[#1a1a2e]">{verified.class}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Term / Session</span>
+                      <span className="font-semibold text-[#1a1a2e]">{verified.term} · {verified.session}</span>
+                    </div>
+                    <div className="flex justify-between text-sm border-t border-gray-200 pt-2 mt-1">
+                      <span className="text-gray-500">PIN uses remaining</span>
+                      <span className={`font-semibold ${usagesLeft <= 1 ? 'text-red-500' : 'text-green-600'}`}>
+                        {usagesLeft} of {verified.pin_usage_limit}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/*
+                   * KEY: This is a plain <a> tag, not window.open().
+                   * It opens /api/result-pdf in a new tab — a direct
+                   * browser navigation that is NEVER blocked as a popup
+                   * on any device. /api/result-pdf reads the result_session
+                   * cookie set by /api/verify and streams the PDF directly.
+                   */}
+                  <a
+                    href="/api/result-pdf"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full bg-[#4169E1] hover:bg-[#2c4fc9] text-white font-semibold py-3.5 rounded-md text-sm flex items-center justify-center gap-2"
+                  >
+                    📄 Open Result
+                  </a>
+
+                  <p className="text-xs text-gray-400 text-center mt-3">
+                    Your result will open in a new tab. Use your browser&apos;s print option to print or save it.
+                  </p>
+
+                  <button
+                    onClick={() => {
+                      setVerified(null);
+                      setForm({ admission_no: '', pin_code: '', class: '', term: '', session: '' });
+                    }}
+                    className="w-full mt-3 text-gray-500 hover:text-gray-700 text-xs py-2 border border-gray-200 rounded-md"
+                  >
+                    ← Check another result
+                  </button>
+                </div>
               </div>
-              <form onSubmit={handleSubmit} className="px-6 py-6 space-y-4">
-                {error && (
-                  <div className="bg-red-50 border border-red-200 rounded-md px-4 py-3 flex items-start gap-2">
-                    <span className="text-red-500 mt-0.5">⚠</span>
-                    <p className="text-red-700 text-sm">{error}</p>
-                  </div>
-                )}
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Admission Number <span className="text-red-500">*</span></label>
-                  <input type="text" name="admission_no" value={form.admission_no} onChange={handleChange}
-                    placeholder="e.g. RC-2024-001"
-                    className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-[#4169E1]"
-                    required autoComplete="off" />
+            ) : (
+              /* ── FORM ─────────────────────────────────────────────────── */
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                <div className="bg-[#4169E1] px-6 py-4">
+                  <h2 className="font-garamond text-xl text-white font-semibold">Check Your Result</h2>
+                  <p className="text-blue-100 text-xs mt-1">Fill in all fields accurately to access your result</p>
                 </div>
+                <form onSubmit={handleSubmit} className="px-6 py-6 space-y-4">
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-md px-4 py-3 flex items-start gap-2">
+                      <span className="text-red-500 mt-0.5">⚠</span>
+                      <p className="text-red-700 text-sm">{error}</p>
+                    </div>
+                  )}
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Class <span className="text-red-500">*</span></label>
-                  <select name="class" value={form.class} onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4169E1]"
-                    required>
-                    <option value="">— Select Class —</option>
-                    {CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Term <span className="text-red-500">*</span></label>
-                    <select name="term" value={form.term} onChange={handleChange}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4169E1]"
-                      required>
-                      <option value="">— Term —</option>
-                      {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Session <span className="text-red-500">*</span></label>
-                    <select name="session" value={form.session} onChange={handleChange}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4169E1]"
-                      required>
-                      <option value="">— Session —</option>
-                      {SESSIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">PIN <span className="text-red-500">*</span></label>
-                  <div className="relative">
-                    <input type={showPin ? 'text' : 'password'} name="pin_code" value={form.pin_code} onChange={handleChange}
-                      placeholder="Enter 16-character PIN"
-                      className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm font-mono uppercase pr-16 focus:outline-none focus:ring-2 focus:ring-[#4169E1]"
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Admission Number <span className="text-red-500">*</span></label>
+                    <input type="text" name="admission_no" value={form.admission_no} onChange={handleChange}
+                      placeholder="e.g. RC-2024-001"
+                      className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-[#4169E1]"
                       required autoComplete="off" />
-                    <button type="button" onClick={() => setShowPin(!showPin)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-medium">
-                      {showPin ? 'HIDE' : 'SHOW'}
-                    </button>
-                  </div>
                   </div>
 
-                <button type="submit" disabled={loading}
-                  className="w-full bg-[#4169E1] hover:bg-[#2c4fc9] disabled:bg-[#a0aec0] text-white font-semibold py-3 rounded-md text-sm mt-1">
-                  {loading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Verifying...
-                    </span>
-                  ) : 'Check Result →'}
-                </button>
-              </form>
-            </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Class <span className="text-red-500">*</span></label>
+                    <select name="class" value={form.class} onChange={handleChange}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4169E1]"
+                      required>
+                      <option value="">— Select Class —</option>
+                      {CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Term <span className="text-red-500">*</span></label>
+                      <select name="term" value={form.term} onChange={handleChange}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4169E1]"
+                        required>
+                        <option value="">— Term —</option>
+                        {TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Session <span className="text-red-500">*</span></label>
+                      <select name="session" value={form.session} onChange={handleChange}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4169E1]"
+                        required>
+                        <option value="">— Session —</option>
+                        {SESSIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">PIN <span className="text-red-500">*</span></label>
+                    <div className="relative">
+                      <input type={showPin ? 'text' : 'password'} name="pin_code" value={form.pin_code} onChange={handleChange}
+                        placeholder="Enter 16-character PIN"
+                        className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm font-mono uppercase pr-16 focus:outline-none focus:ring-2 focus:ring-[#4169E1]"
+                        required autoComplete="off" />
+                      <button type="button" onClick={() => setShowPin(!showPin)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-medium">
+                        {showPin ? 'HIDE' : 'SHOW'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button type="submit" disabled={loading}
+                    className="w-full bg-[#4169E1] hover:bg-[#2c4fc9] disabled:bg-[#a0aec0] text-white font-semibold py-3 rounded-md text-sm mt-1">
+                    {loading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Verifying...
+                      </span>
+                    ) : 'Check Result →'}
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
 
         </div>

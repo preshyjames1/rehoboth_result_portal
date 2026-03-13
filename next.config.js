@@ -34,7 +34,7 @@ const nextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob:",
-              "frame-src blob:",                          // PDF viewer uses blob: URLs
+              "frame-src 'self'",                        // PDF proxy routes are same-origin
               "connect-src 'self' https://*.supabase.co https://api.paystack.co https://checkout.paystack.com",
               "font-src 'self'",
               "object-src 'none'",
