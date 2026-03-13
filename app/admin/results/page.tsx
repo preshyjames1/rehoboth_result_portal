@@ -691,7 +691,17 @@ export default function AdminResultsPage() {
               <div className="text-center text-white"><svg className="animate-spin w-8 h-8 mx-auto mb-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg><p className="text-sm text-gray-300">Loading...</p></div>
             ) : viewError ? (
               <div className="text-center text-white"><p className="text-4xl mb-3">⚠️</p><p className="text-sm text-gray-300">{viewError}</p><button onClick={() => handleViewPdf(viewTarget)} className="mt-4 bg-[#4169E1] text-white px-4 py-2 rounded-md text-sm">Retry</button></div>
-            ) : viewUrl ? <iframe src={viewUrl} className="w-full h-full border-none" title="Result PDF" /> : null}
+            ) : viewUrl ? (
+              <div className="w-full h-full flex flex-col">
+                <div className="bg-[#1a1a2e] border-b border-white/10 px-4 py-2 flex justify-end flex-shrink-0">
+                  <a href={viewUrl} target="_blank" rel="noreferrer"
+                    className="bg-[#4169E1] text-white text-xs font-semibold px-4 py-1.5 rounded-md">
+                    📄 Open / Download PDF
+                  </a>
+                </div>
+                <iframe src={viewUrl} className="w-full flex-1 border-none" title="Result PDF" />
+              </div>
+            ) : null}
           </div>
         </div>
       )}
@@ -711,7 +721,17 @@ export default function AdminResultsPage() {
               <div className="text-center text-white"><svg className="animate-spin w-8 h-8 mx-auto mb-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg><p className="text-sm text-gray-300">Loading...</p></div>
             ) : bsViewError ? (
               <div className="text-center text-white"><p className="text-4xl mb-3">⚠️</p><p className="text-sm text-gray-300">{bsViewError}</p><button onClick={() => handleBsView(bsViewTarget)} className="mt-4 bg-[#4169E1] text-white px-4 py-2 rounded-md text-sm">Retry</button></div>
-            ) : bsViewUrl ? <iframe src={bsViewUrl} className="w-full h-full border-none" title="Broadsheet PDF" /> : null}
+            ) : bsViewUrl ? (
+              <div className="w-full h-full flex flex-col">
+                <div className="bg-[#1a1a2e] border-b border-white/10 px-4 py-2 flex justify-end flex-shrink-0">
+                  <a href={bsViewUrl} target="_blank" rel="noreferrer"
+                    className="bg-[#4169E1] text-white text-xs font-semibold px-4 py-1.5 rounded-md">
+                    📄 Open / Download PDF
+                  </a>
+                </div>
+                <iframe src={bsViewUrl} className="w-full flex-1 border-none" title="Broadsheet PDF" />
+              </div>
+            ) : null}
           </div>
         </div>
       )}
