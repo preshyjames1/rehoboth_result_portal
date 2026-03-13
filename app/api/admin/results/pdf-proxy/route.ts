@@ -50,7 +50,9 @@ export async function GET(request: NextRequest) {
   const pdfBuffer = await pdfRes.arrayBuffer();
 
   // Use student name as filename so the browser tab title is meaningful
-  const studentInfo = result.students as { full_name: string; admission_no: string } | null;
+  // ✅ After
+const studentsRaw = result.students as { full_name: string; admission_no: string }[] | null;
+const studentInfo = Array.isArray(studentsRaw) ? studentsRaw[0] ?? null : null;
   const filename = studentInfo
     ? `${studentInfo.admission_no}-result.pdf`
     : 'result.pdf';
