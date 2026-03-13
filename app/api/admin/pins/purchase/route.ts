@@ -59,8 +59,9 @@ export async function POST(request: NextRequest) {
 
     const authUrl = paystackResponse.data.authorization_url;
 
-    // Insert transaction — admission_no is required NOT NULL in DB so we use placeholder
-    // authorization_url column requires migration.sql to be run first (see fix9/migration.sql)
+    // Insert transaction — admission_no is required NOT NULL in DB so we use placeholder.
+    // term + session are stored so /api/school-admin/broadsheets can verify payment.
+    // authorization_url column requires migration.sql; term/session require broadsheet_access migration.
     const { error: insertError } = await supabase.from('transactions').insert({
       reference,
       email,
@@ -69,22 +70,33 @@ export async function POST(request: NextRequest) {
       amount: totalAmount,
       status: 'pending',
       authorization_url: authUrl,   // ← requires migration.sql
+      term,                         // ← requires: ALTER TABLE transactions ADD COLUMN IF NOT EXISTS term text;
+      session: academicSession,     // ← requires: ALTER TABLE transactions ADD COLUMN IF NOT EXISTS session text;
     });
 
     if (insertError) {
-      // If authorization_url column missing, retry without it
-      if (insertError.message?.includes('authorization_url')) {
-        const { error: retryError } = await supabase.from('transactions').insert({
-          reference,
-          email,
-          phone: null,
-          admission_no: 'ADMIN-BULK',
-          amount: totalAmount,
-          status: 'pending',
+      // Graceful fallback: retry without columns that may not exist yet
+      const missingCol =
+        insertError.message?.includes('authorization_url') ||
+        insertError.message?.includes('"term"') ||
+        insertError.message?.includes('"session"');
+
+      if (missingCol) {
+        // Try with authorization_url only
+        const { error: retry1 } = await supabase.from('transactions').insert({
+          reference, email, phone: null, admission_no: 'ADMIN-BULK',
+          amount: totalAmount, status: 'pending', authorization_url: authUrl,
         });
-        if (retryError) {
-          console.error('Transaction insert failed (retry):', retryError);
-          return NextResponse.json({ error: 'Failed to record transaction' }, { status: 500 });
+        if (retry1) {
+          // Bare minimum fallback
+          const { error: retry2 } = await supabase.from('transactions').insert({
+            reference, email, phone: null, admission_no: 'ADMIN-BULK',
+            amount: totalAmount, status: 'pending',
+          });
+          if (retry2) {
+            console.error('Transaction insert failed (final retry):', retry2);
+            return NextResponse.json({ error: 'Failed to record transaction' }, { status: 500 });
+          }
         }
       } else {
         console.error('Transaction insert failed:', insertError);
