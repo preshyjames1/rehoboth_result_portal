@@ -68,6 +68,25 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/school-admin/dashboard', request.url));
     }
 
+    // ── Absolute max: 8 hours from original login ──────────────────
+    // iat is in seconds (JWT standard), Date.now() is milliseconds
+    const loginTime = adminSession.iat * 1000;
+    const eightHours = 8 * 60 * 60 * 1000;
+    if (Date.now() - loginTime > eightHours) {
+      const response = NextResponse.redirect(new URL('/admin', request.url));
+      response.cookies.delete('admin_session');
+      return response;
+    }
+
+    // ── Sliding inactivity: refresh 30-min window on every visit ───
+    const { setAdminSession } = await import('@/lib/session');
+    await setAdminSession({
+      admin_id: adminSession.admin_id,
+      email: adminSession.email,
+      role: adminSession.role,
+      iat: adminSession.iat, // preserve original login time
+    });
+
     return NextResponse.next();
   }
 
@@ -81,17 +100,34 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/school-admin/transactions') ||
     pathname.startsWith('/school-admin/publish');
 
-  if (isSchoolAdminPage) {
+ if (isSchoolAdminPage) {
     const adminToken   = cookies.get('admin_session')?.value;
     const adminSession = await verifyJwt<AdminSessionPayload>(adminToken);
 
     if (!adminSession) return NextResponse.redirect(new URL('/school-admin', request.url));
 
+    // ── Absolute max: 8 hours from original login ──────────────────
+    const loginTime = adminSession.iat * 1000;
+    const eightHours = 8 * 60 * 60 * 1000;
+    if (Date.now() - loginTime > eightHours) {
+      const response = NextResponse.redirect(new URL('/school-admin', request.url));
+      response.cookies.delete('admin_session');
+      return response;
+    }
+
+    // ── Sliding inactivity: refresh 30-min window on every visit ───
+    const { setAdminSession } = await import('@/lib/session');
+    await setAdminSession({
+      admin_id: adminSession.admin_id,
+      email: adminSession.email,
+      role: adminSession.role,
+      iat: adminSession.iat,
+    });
+
     return NextResponse.next();
   }
-
-  return NextResponse.next();
-}
+ return NextResponse.next(); // fallback for any unmatched routes
+}                             // ← THIS was missing — closes the middleware() function
 
 export const config = {
   matcher: [

@@ -80,21 +80,32 @@ export async function clearMasterSession() {
   cookieStore.delete('master_session');
 }
 
-// ── Admin Session (2 hours) ────────────────────────────────────────────────
+// ── Admin Session (30 min inactivity, 8 hr absolute max) ──────────────────
 
-export async function setAdminSession(payload: Omit<AdminSessionPayload, 'iat' | 'exp'>) {
-  const token = await new SignJWT({ ...payload })
+export async function setAdminSession(
+  payload: Omit<AdminSessionPayload, 'exp' | 'iat'> & { iat?: number }
+) {
+  const builder = new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('2h')
-    .sign(secret);
+    .setExpirationTime('30m');
+
+  // Preserve original login time so middleware can enforce 8-hour absolute max.
+  // On first login, iat is undefined so jose sets it to now.
+  // On every refresh, we pass the original iat so it never resets.
+  if (payload.iat) {
+    builder.setIssuedAt(payload.iat);
+  } else {
+    builder.setIssuedAt();
+  }
+
+  const token = await builder.sign(secret);
 
   const cookieStore = await cookies();
   cookieStore.set('admin_session', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 2,
+    maxAge: 60 * 30, // 30 minutes
     path: '/',
   });
 }

@@ -114,7 +114,7 @@ In **Paystack Dashboard**:
 
 1. **Live webhook URL** — Settings → API Keys & Webhooks → Webhook URL:
    ```
-   https://result.schuwap.xyz/api/payment
+   https://rehobothresult.schuwap.xyz/api/payment
    ```
 2. **Enable 2FA** — Settings → Security → Two-Factor Authentication
 3. **Review team access** — Settings → Team → remove anyone who no longer needs access
@@ -139,7 +139,7 @@ In **Resend Dashboard**:
 
 After migration and deployment:
 
-1. Log in at `https://result.schuwap.xyz/admin`
+1. Log in at `https://rehobothresult.schuwap.xyz/admin`
 2. Go to **Master PINs** → **Create Master PIN**
 3. The system generates a master number + PIN pair
 4. **Write down the displayed plaintext PIN immediately** — it is shown once and stored only as a hash

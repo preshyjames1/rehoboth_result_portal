@@ -3,7 +3,7 @@ const nextConfig = {
   experimental: {
     serverActions: {
       // M-04 FIX: production domain added alongside localhost
-      allowedOrigins: ['localhost:3000', 'result.schuwap.xyz'],
+      allowedOrigins: ['localhost:3000', 'rehobothresult.schuwap.xyz'],
     },
   },
 
