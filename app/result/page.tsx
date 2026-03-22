@@ -14,6 +14,15 @@
  *   sessionStorage now holds only non-sensitive display data:
  *   id, admission_no, full_name, class, term, session,
  *   pin_usage_count, pin_usage_limit.
+ *
+ * Mobile fix:
+ *   Mobile browsers (iOS Safari, Android Chrome) cannot render PDFs
+ *   inside iframes using blob: URLs — they show a "content blocked"
+ *   error instead. On mobile we skip the iframe entirely and show a
+ *   direct <a> link to the signed URL instead, which opens in the
+ *   browser's native PDF viewer. window.open() is NOT used because
+ *   any window.open() called after an async fetch is silently blocked
+ *   as a popup on mobile.
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -34,13 +43,20 @@ interface StudentData {
 
 export default function ResultPage() {
   const router = useRouter();
-  const [student, setStudent]   = useState<StudentData | null>(null);
-  const [blobUrl, setBlobUrl]   = useState('');
-  const [expired, setExpired]   = useState(false);
-  const [loading, setLoading]   = useState(true);
-  const [pdfError, setPdfError] = useState(false);
+  const [student, setStudent]     = useState<StudentData | null>(null);
+  const [blobUrl, setBlobUrl]     = useState('');
+  const [signedUrl, setSignedUrl] = useState('');
+  const [expired, setExpired]     = useState(false);
+  const [loading, setLoading]     = useState(true);
+  const [pdfError, setPdfError]   = useState(false);
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const blobUrlRef      = useRef('');
+
+  // Detect mobile once on client — avoids SSR mismatch
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    setIsMobile(/Android|iPhone|iPad|iPod|IEMobile/i.test(navigator.userAgent));
+  }, []);
 
   const loadPdfAsBlob = useCallback(async (url: string) => {
     setPdfError(false);
@@ -64,6 +80,7 @@ export default function ResultPage() {
       if (res.status === 401) { setExpired(true); return; }
       if (res.ok) {
         const data = await res.json();
+        setSignedUrl(data.signed_url ?? '');
         await loadPdfAsBlob(data.signed_url);
       }
     } catch { /* expire naturally */ }
@@ -140,7 +157,7 @@ export default function ResultPage() {
 
   if (!student) return null;
 
-  const usagePct  = (student.pin_usage_count / student.pin_usage_limit) * 100;
+  const usagePct   = (student.pin_usage_count / student.pin_usage_limit) * 100;
   const usagesLeft = student.pin_usage_limit - student.pin_usage_count;
 
   return (
@@ -166,10 +183,22 @@ export default function ResultPage() {
             </div>
 
             <div className="flex items-center gap-2 no-print">
-              <button onClick={handlePrint}
-                className="bg-[#FFD700] hover:bg-[#d4af00] text-[#1a1a2e] font-semibold px-4 py-2 rounded-md text-sm flex items-center gap-1.5">
-                🖨 <span className="hidden sm:inline">Print Result</span>
-              </button>
+              {isMobile ? (
+                /* On mobile: direct anchor — opens native PDF viewer, never blocked as popup */
+                <a
+                  href={signedUrl || blobUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="bg-[#FFD700] hover:bg-[#d4af00] text-[#1a1a2e] font-semibold px-4 py-2 rounded-md text-sm flex items-center gap-1.5"
+                >
+                  📄 <span className="hidden sm:inline">Open Result</span>
+                </a>
+              ) : (
+                <button onClick={handlePrint}
+                  className="bg-[#FFD700] hover:bg-[#d4af00] text-[#1a1a2e] font-semibold px-4 py-2 rounded-md text-sm flex items-center gap-1.5">
+                  🖨 <span className="hidden sm:inline">Print Result</span>
+                </button>
+              )}
               <button onClick={() => { sessionStorage.removeItem('result_student'); router.push('/'); }}
                 className="text-gray-300 hover:text-white text-xs px-3 py-2 border border-gray-600 rounded-md">
                 Exit
@@ -221,18 +250,52 @@ export default function ResultPage() {
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm"
             onContextMenu={(e) => e.preventDefault()}>
             {pdfError ? (
+              /* Error fallback — direct link works on both mobile and desktop */
               <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
                 <span className="text-5xl mb-4">📄</span>
                 <h3 className="font-semibold text-[#1a1a2e] mb-2">Result Ready</h3>
                 <p className="text-gray-500 text-sm mb-5 max-w-xs">
-                  Your result could not display inline on this browser. Use the Print button above to print directly.
+                  Your result could not display inline on this browser. Tap the button below to open it directly.
                 </p>
-                <button onClick={handlePrint}
-                  className="bg-[#4169E1] hover:bg-[#2c4fc9] text-white font-semibold px-6 py-3 rounded-md text-sm">
-                  🖨 Print / Open Result
-                </button>
+                <a
+                  href={signedUrl || blobUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="bg-[#4169E1] hover:bg-[#2c4fc9] text-white font-semibold px-6 py-3 rounded-md text-sm inline-block"
+                >
+                  📄 Open Result
+                </a>
+              </div>
+            ) : isMobile ? (
+              /* Mobile: skip iframe — show tap-to-open card */
+              <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+                <span className="text-6xl mb-4">📄</span>
+                <h3 className="font-semibold text-[#1a1a2e] text-lg mb-2">
+                  {blobUrl ? 'Your Result is Ready' : 'Loading...'}
+                </h3>
+                <p className="text-gray-500 text-sm mb-6 max-w-xs">
+                  {blobUrl
+                    ? 'Tap the button below to open your result. You can print or save it from your browser once it opens.'
+                    : 'Please wait while your result loads.'}
+                </p>
+                {blobUrl ? (
+                  <a
+                    href={signedUrl || blobUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="bg-[#4169E1] hover:bg-[#2c4fc9] text-white font-semibold px-8 py-3 rounded-md text-sm inline-block"
+                  >
+                    📄 Open Result
+                  </a>
+                ) : (
+                  <svg className="animate-spin w-6 h-6 text-[#4169E1]" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                )}
               </div>
             ) : blobUrl ? (
+              /* Desktop: render inline iframe as before */
               <iframe src={blobUrl} className="w-full border-none block"
                 style={{ height: '82vh', minHeight: '500px' }} title="Your Result" />
             ) : (
@@ -247,10 +310,21 @@ export default function ResultPage() {
 
           <div className="mt-3 flex items-center justify-between no-print">
             <p className="text-xs text-gray-400">{usagesLeft} PIN use(s) remaining after this session.</p>
-            <button onClick={handlePrint}
-              className="bg-[#4169E1] hover:bg-[#2c4fc9] text-white font-semibold px-5 py-2 rounded-md text-sm flex items-center gap-2">
-              🖨 Print Result
-            </button>
+            {isMobile ? (
+              <a
+                href={signedUrl || blobUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-[#4169E1] hover:bg-[#2c4fc9] text-white font-semibold px-5 py-2 rounded-md text-sm flex items-center gap-2 inline-block"
+              >
+                📄 Open Result
+              </a>
+            ) : (
+              <button onClick={handlePrint}
+                className="bg-[#4169E1] hover:bg-[#2c4fc9] text-white font-semibold px-5 py-2 rounded-md text-sm flex items-center gap-2">
+                🖨 Print Result
+              </button>
+            )}
           </div>
         </main>
 

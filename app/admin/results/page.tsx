@@ -65,10 +65,6 @@ export default function AdminResultsPage() {
   const [reuploadMsg, setReuploadMsg] = useState('');
   const reuploadInputRef = useRef<HTMLInputElement>(null);
 
-  const [viewTarget, setViewTarget] = useState<Result | null>(null);
-  const [viewUrl, setViewUrl] = useState('');
-  const [viewLoading, setViewLoading] = useState(false);
-  const [viewError, setViewError] = useState('');
 
   // Broadsheets
   const [broadsheets, setBroadsheets] = useState<Broadsheet[]>([]);
@@ -82,7 +78,6 @@ export default function AdminResultsPage() {
   const [bsFile, setBsFile] = useState<File | null>(null);
   const [bsUploading, setBsUploading] = useState(false);
   const [bsMsg, setBsMsg] = useState('');
-  const [bsViewTarget, setBsViewTarget] = useState<Broadsheet | null>(null);
   const [bsSelectedIds, setBsSelectedIds] = useState<Set<string>>(new Set());
 
   const handleBsBulkDelete = async () => {
@@ -92,9 +87,6 @@ export default function AdminResultsPage() {
     setBsSelectedIds(new Set());
     fetchBroadsheets();
   };
-  const [bsViewUrl, setBsViewUrl] = useState('');
-  const [bsViewLoading, setBsViewLoading] = useState(false);
-  const [bsViewError, setBsViewError] = useState('');
 
   const fetchResults = useCallback(async () => {
     setLoading(true);
@@ -211,19 +203,6 @@ export default function AdminResultsPage() {
     finally { setReuploadLoading(false); }
   };
 
-  const handleViewPdf = async (result: Result) => {
-    setViewTarget(result); setViewUrl(''); setViewError(''); setViewLoading(true);
-    try {
-      const res = await fetch(`/api/admin/results/view-pdf?result_id=${result.id}`, { cache: 'no-store' });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      const blob = await (await fetch(data.signed_url)).blob();
-      setViewUrl(URL.createObjectURL(blob));
-    } catch { setViewError('Could not load PDF. Try again.'); }
-    finally { setViewLoading(false); }
-  };
-
-  const closeViewModal = () => { if (viewUrl) URL.revokeObjectURL(viewUrl); setViewTarget(null); setViewUrl(''); setViewError(''); };
 
   const handleBsUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,22 +228,6 @@ export default function AdminResultsPage() {
     else alert('Failed to delete broadsheet.');
   };
 
-  const handleBsView = async (bs: Broadsheet) => {
-    setBsViewTarget(bs); setBsViewUrl(''); setBsViewError(''); setBsViewLoading(true);
-    try {
-      const res = await fetch('/api/admin/broadsheets', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: bs.id }),
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      const blob = await (await fetch(data.signed_url)).blob();
-      setBsViewUrl(URL.createObjectURL(blob));
-    } catch { setBsViewError('Could not load PDF. Try again.'); }
-    finally { setBsViewLoading(false); }
-  };
-
-  const closeBsView = () => { if (bsViewUrl) URL.revokeObjectURL(bsViewUrl); setBsViewTarget(null); setBsViewUrl(''); setBsViewError(''); };
   const typeLabel = (v: string) => BROADSHEET_TYPES.find((t) => t.value === v)?.label ?? v;
 
   const Spinner = () => (
@@ -499,7 +462,7 @@ export default function AdminResultsPage() {
                       <td className="px-4 py-3"><StatusBadge result={r} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 text-xs font-medium flex-wrap">
-                          <button onClick={() => handleViewPdf(r)} className="text-[#4169E1] hover:underline">View PDF</button>
+                          <a href={`/api/admin/results/pdf-proxy?result_id=${r.id}`} target="_blank" rel="noreferrer" className="text-[#4169E1] hover:underline">View PDF</a>
                           {!r.is_published && <button onClick={() => handleAction(r.id, 'publish')} className="text-green-600 hover:underline">Publish</button>}
                           {r.is_published && <button onClick={() => handleAction(r.id, 'unpublish')} className="text-yellow-600 hover:underline">Unpublish</button>}
                           {!r.is_published && !r.publish_at && (
@@ -594,7 +557,7 @@ export default function AdminResultsPage() {
                         <td className="px-4 py-3 text-gray-400 text-xs">{new Date(bs.created_at).toLocaleDateString()}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3 text-xs font-medium">
-                            <button onClick={() => handleBsView(bs)} className="text-[#4169E1] hover:underline">View PDF</button>
+                            <a href={`/api/admin/broadsheets/pdf-proxy?id=${bs.id}`} target="_blank" rel="noreferrer" className="text-[#4169E1] hover:underline">View PDF</a>
                             <button onClick={() => handleBsDelete(bs)} className="text-red-500 hover:underline">Delete</button>
                           </div>
                         </td>
@@ -672,46 +635,6 @@ export default function AdminResultsPage() {
                   className="border border-gray-300 text-gray-700 font-medium px-4 py-2 rounded-md text-sm">Cancel</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── VIEW PDF (student result) ── */}
-      {viewTarget && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black/80">
-          <div className="bg-[#1a1a2e] text-white px-5 py-3 flex items-center justify-between flex-shrink-0">
-            <div>
-              <p className="font-semibold text-sm">{viewTarget.students?.full_name ?? 'Result'}</p>
-              <p className="text-gray-400 text-xs mt-0.5">{viewTarget.students?.admission_no} · {viewTarget.students?.class} · {viewTarget.term} {viewTarget.session}</p>
-            </div>
-            <button onClick={closeViewModal} className="text-gray-400 hover:text-white text-xl px-2">✕</button>
-          </div>
-          <div className="flex-1 bg-gray-800 flex items-center justify-center overflow-hidden">
-            {viewLoading ? (
-              <div className="text-center text-white"><svg className="animate-spin w-8 h-8 mx-auto mb-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg><p className="text-sm text-gray-300">Loading...</p></div>
-            ) : viewError ? (
-              <div className="text-center text-white"><p className="text-4xl mb-3">⚠️</p><p className="text-sm text-gray-300">{viewError}</p><button onClick={() => handleViewPdf(viewTarget)} className="mt-4 bg-[#4169E1] text-white px-4 py-2 rounded-md text-sm">Retry</button></div>
-            ) : viewUrl ? <iframe src={viewUrl} className="w-full h-full border-none" title="Result PDF" /> : null}
-          </div>
-        </div>
-      )}
-
-      {/* ── VIEW PDF (broadsheet) ── */}
-      {bsViewTarget && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black/80">
-          <div className="bg-[#1a1a2e] text-white px-5 py-3 flex items-center justify-between flex-shrink-0">
-            <div>
-              <p className="font-semibold text-sm">{bsViewTarget.class} — {typeLabel(bsViewTarget.type)} Broadsheet</p>
-              <p className="text-gray-400 text-xs mt-0.5">{bsViewTarget.term} · {bsViewTarget.session}</p>
-            </div>
-            <button onClick={closeBsView} className="text-gray-400 hover:text-white text-xl px-2">✕</button>
-          </div>
-          <div className="flex-1 bg-gray-800 flex items-center justify-center overflow-hidden">
-            {bsViewLoading ? (
-              <div className="text-center text-white"><svg className="animate-spin w-8 h-8 mx-auto mb-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg><p className="text-sm text-gray-300">Loading...</p></div>
-            ) : bsViewError ? (
-              <div className="text-center text-white"><p className="text-4xl mb-3">⚠️</p><p className="text-sm text-gray-300">{bsViewError}</p><button onClick={() => handleBsView(bsViewTarget)} className="mt-4 bg-[#4169E1] text-white px-4 py-2 rounded-md text-sm">Retry</button></div>
-            ) : bsViewUrl ? <iframe src={bsViewUrl} className="w-full h-full border-none" title="Broadsheet PDF" /> : null}
           </div>
         </div>
       )}
