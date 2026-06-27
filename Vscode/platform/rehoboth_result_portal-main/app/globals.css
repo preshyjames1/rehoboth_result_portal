@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --royal-blue: #4169E1;
+    --royal-blue-dark: #2c4fc9;
+    --gold: #FFD700;
+    --gold-dark: #d4af00;
+    --navy: #1a1a2e;
+    --navy-light: #252545;
+    --bg: #F5F5F5;
+    --card: #FFFFFF;
+    --text: #1a1a2e;
+    --text-muted: #6b7280;
+    --border: #e5e7eb;
+    --success: #16a34a;
+    --error: #dc2626;
+    --warning: #d97706;
+  }
+}
+
+@layer utilities {
+  .font-garamond { font-family: 'EB Garamond', Georgia, serif; }
+  .font-mono-custom { font-family: 'IBM Plex Mono', monospace; }
+  .font-inter { font-family: 'Inter', sans-serif; }
+}
+
+/* PDF viewer: disable text selection and right-click visual feedback */
+.pdf-viewer {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Print styles */
+@media print {
+  nav,
+  .no-print,
+  button,
+  .sidebar,
+  header.site-header { display: none !important; }
+
+  .print-header { display: block !important; }
+
+  .print-watermark {
+    position: fixed;
+    bottom: 20px;
+    width: 100%;
+    text-align: center;
+    font-size: 10px;
+    color: #666;
+  }
+
+  .print-watermark::after {
+    content: "OFFICIAL RESULT — NOT VALID WITHOUT SCHOOL STAMP AND SIGNATURE";
+  }
+
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+}
+
+/* Smooth transitions */
+* {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: ease-in-out;
+}
+
+/* Focus ring */
+*:focus-visible {
+  outline: 2px solid var(--royal-blue);
+  outline-offset: 2px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f1f1f1; }
+::-webkit-scrollbar-thumb { background: #c5c5c5; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #a0a0a0; }
